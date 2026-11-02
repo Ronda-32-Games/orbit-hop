@@ -1,0 +1,18 @@
+# Servidor de Orbit Hop en Cloudflare Workers (DEC-052).
+# Lo despliega Ignacio con: npx wrangler deploy
+# Secretos (nunca en el repo):
+#   npx wrangler secret put BOT_TOKEN      # token de @ronda32games_bot
+#   npx wrangler secret put TOKEN_SECRET   # cualquier texto largo al azar
+#   npx wrangler secret put DAILY_SECRET   # otro texto largo al azar
+name = "orbit-hop-api"
+main = "src/server/worker.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+ALLOWED_ORIGIN = "https://ronda-32-games.github.io"
+
+# Cuando sumemos D1 (intentos del Daily, token de un solo uso, ranking):
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "ronda32"
+# database_id = "..."

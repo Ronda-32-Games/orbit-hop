@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Orbit Hop</title>
+<meta name="theme-color" content="#151A2D">
+<script src="https://telegram.org/js/telegram-web-app.js" async></script>
+<style>
+:root{--tinta:#151A2D;--tinta2:#232A45;--papel:#F2EDE3;--lima:#C5F04A;--coral:#FF5A47;--cielo:#5EA2FF;--mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--tinta);color:var(--papel);font-family:var(--mono);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 0;display:flex;justify-content:space-between;font-size:11px;letter-spacing:.06em;pointer-events:none;font-variant-numeric:tabular-nums}
+#hud b{display:block;font-size:20px;letter-spacing:0}
+#hud .t b{color:var(--lima)}
+#pu{position:fixed;left:16px;top:calc(env(safe-area-inset-top,0px) + 62px);font-size:12px;pointer-events:none;color:var(--lima)}
+#ms{position:fixed;left:0;right:0;bottom:0;padding:6px 16px calc(env(safe-area-inset-bottom,0px) + 6px);font-size:10px;opacity:.75;display:flex;flex-wrap:wrap;gap:4px 12px;pointer-events:none;background:rgba(21,26,45,.6)}
+.ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px 16px;text-align:center;background:rgba(21,26,45,.88)}
+.ov h1{margin:0;font-size:30px;color:var(--lima)}
+.ov p{margin:0;max-width:34ch;line-height:1.5;font-size:13px}
+.ov .big{font-size:40px;font-weight:700}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+button{font-family:var(--mono);font-size:15px;font-weight:700;background:var(--lima);color:var(--tinta);border:0;border-radius:8px;padding:13px 22px;cursor:pointer;min-width:120px}
+button.alt{background:transparent;color:var(--papel);outline:1px solid rgba(242,237,227,.35)}
+button:disabled{opacity:.35}
+button:focus-visible{outline:2px solid var(--cielo);outline-offset:3px}
+#selftest pre{text-align:left;font-size:11px;line-height:1.6;max-width:100%;white-space:pre-wrap;user-select:text;-webkit-user-select:text}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><div>PLANET<b id="h-pl">1</b></div><div>SCORE<b id="h-sc">0</b></div><div>COMBO<b id="h-cb">x1</b></div><div class="t">TIME<b id="h-tm">60.0</b></div></div>
+<div id="pu"></div>
+<div id="ms" hidden></div>
+
+<div id="menu" class="ov">
+  <h1>Orbit Hop</h1>
+  <p>Tap to let go. Land inside the field of a planet ahead. Skip planets for more points. 60 seconds.</p>
+  <div class="row"><button id="b-daily" type="button" hidden>Daily</button><button id="b-practice" type="button">Practice</button></div>
+  <p id="m-note"></p>
+</div>
+
+<div id="pause" class="ov" hidden><h1>Paused</h1><p>Tap to keep playing.</p></div>
+
+<div id="result" class="ov" hidden>
+  <p id="r-mode"></p>
+  <div class="big" id="r-planet"></div>
+  <p id="r-line"></p>
+  <p id="r-best"></p>
+  <div class="row"><button id="b-again" type="button">Play again</button><button id="b-menu" type="button" class="alt">Menu</button></div>
+</div>
+
+<div id="selftest" class="ov" hidden><h1>Self-test</h1><pre id="st-out"></pre><button id="b-st-close" type="button">Close</button></div>
+
+<script type="module" src="./game.js"></script>
+</body>
+</html>

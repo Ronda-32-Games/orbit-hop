@@ -1,0 +1,67 @@
+{
+  "rulesVersion": "oh-rules-1",
+  "tickHz": 60,
+
+  "roundS": 60,
+  "pts": 100,
+  "comboStep": 0.5,
+  "comboMax": 3,
+  "perfectFrac": 0.33,
+  "captureDistFrac": 0.8,
+
+  "bonus32Pts": 500,
+  "bonus32S": 3,
+
+  "perfStreakFrom": 3,
+  "perfTimeS": 1,
+  "perfTimeCapS": 5,
+
+  "orbitR": 38,
+  "shipV": 520,
+  "shipR": 7,
+
+  "wallPad": 140,
+  "reach": 3,
+
+  "rootField": 70,
+  "rootW": 1.8,
+  "hopDistMin": 170,
+  "hopDistGrow": 90,
+  "fieldStart": 70,
+  "fieldShrink": 26,
+  "fieldMin": 40,
+  "orbitStart": 1.8,
+  "orbitGrow": 1.3,
+  "difficultyCapPlanet": 40,
+
+  "forkAt": [20, 30, 40],
+  "forkSpread": 0.62,
+  "forkJitter": 0.25,
+  "diagMin": 0.3,
+  "diagRange": 0.75,
+  "branchB": { "fieldDelta": -6, "orbitDelta": 0.35, "astExtra": 0.2, "ptsMul": 2 },
+
+  "astFrom": 8,
+  "astR": 13,
+  "astChanceBase": 0.3,
+  "astChanceGrow": 0.4,
+  "astAmpMin": 45,
+  "astAmpRange": 40,
+  "astWMin": 1,
+  "astWRange": 1.6,
+
+  "puFrom": 5,
+  "puChance": 0.18,
+  "puOffRange": 70,
+  "puPickR": 22,
+  "puNoRepeat": true,
+  "gravMul": 1.6,
+  "gravHops": 3,
+  "aimShots": 2,
+  "slowS": 3,
+  "slowMul": 0.45,
+
+  "maxTaps": 400,
+
+  "_pendientes_gdd": "ventana mínima 160 ms y perfecta 60 ms (PROP-034): todavía no entran a las reglas"
+}
