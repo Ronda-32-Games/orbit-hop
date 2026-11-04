@@ -9,6 +9,7 @@ import { dailyAvailable, deleteMyData, type DailyState, finishDaily, startDaily 
 import { makeTracker } from './track.ts';
 import { PU_STYLE, Renderer } from './render.ts';
 import { runSelftest } from './selftest.ts';
+import { planTutorial, type TutorialPlan, TutorialRun } from './tutorial.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -19,7 +20,7 @@ const rules = mode.roundS !== null ? makeRules({ roundS: mode.roundS }) : RULES;
 const renderer = new Renderer($<HTMLCanvasElement>('c'));
 const track = makeTracker(mode);
 
-type Phase = 'menu' | 'loading' | 'playing' | 'paused' | 'result';
+type Phase = 'menu' | 'loading' | 'tutorial' | 'playing' | 'paused' | 'result';
 let phase: Phase = 'menu';
 let s: GameState = newGame(mode.seed ?? 7, rules, true);
 let taps: number[] = [];
@@ -55,6 +56,7 @@ function begin(seed: number) {
 }
 
 async function beginDaily() {
+  if (maybeTutorial(() => { void beginDaily(); })) return;
   phase = 'loading';
   $('m-note').textContent = 'Loading today’s Daily…';
   try {
@@ -78,8 +80,62 @@ async function beginDaily() {
 
 function beginPractice() {
   daily = null;
+  if (maybeTutorial(beginPractice)) return;
   track.add('practice_start');
   begin(mode.seed ?? newSeed());
+}
+
+// ---- tutorial fantasma (TASK-067 / DEC-058) -----------------------------
+let tut: TutorialRun | null = null;
+let afterTut: (() => void) | null = null;
+let plan: TutorialPlan | null | undefined;
+/** se muestra antes de la primera partida: si no hay marca en el teléfono ni en el servidor */
+let tutorialSeen = mode.tutorial ? false : !!store.get<boolean>('oh.tutorial');
+if (!mode.tutorial && track.on) void track.tutorialDone().then(d => { if (d) tutorialSeen = true; });
+let forceTut = mode.tutorial;
+
+/** Si corresponde, arranca el tutorial y guarda qué hacer al terminar. */
+function maybeTutorial(next: () => void, force = false): boolean {
+  if (!force && !forceTut && (tutorialSeen || mode.selftest)) return false;
+  forceTut = false;
+  if (plan === undefined) plan = planTutorial();
+  if (!plan) return false;
+  tut = new TutorialRun(plan);
+  afterTut = next;
+  s = tut.s;
+  renderer.reset(s);
+  acc = 0; last = performance.now();
+  phase = 'tutorial';
+  show(null);
+  $('hud').hidden = true;
+  $('tut').hidden = false;
+  return true;
+}
+
+function endTutorial(skipped: boolean) {
+  if (!tut) return;
+  tut = null;
+  $('tut').hidden = true;
+  $('hud').hidden = false;
+  if (!tutorialSeen) {
+    tutorialSeen = true;
+    store.set('oh.tutorial', true);
+    track.tutorial(skipped ? 'tutorial_skip' : 'tutorial_done');
+  }
+  const next = afterTut;
+  afterTut = null;
+  if (next) next(); else { phase = 'menu'; show('menu'); }
+}
+
+const TUT = { cap: $('tut-cap'), finger: $('tut-finger') };
+function tutorialFrame() {
+  const t = tut!;
+  TUT.cap.textContent = t.caption;
+  // el dedo baja 0,5 s antes del toque y marca el toque con un destello
+  const soon = t.nextTapIn !== null && t.nextTapIn < 500;
+  TUT.finger.classList.toggle('press', soon || t.tapFlash > 0);
+  TUT.finger.classList.toggle('flash', t.tapFlash > 0);
+  TUT.finger.hidden = t.done;
 }
 
 /** Botón del Daily con los intentos que quedan (DEC-052: 3 por día). */
@@ -149,11 +205,13 @@ function savePracticeBest(r: Result) {
 
 // ---- entrada ------------------------------------------------------------
 function onPress(e: Event) {
+  if (phase === 'tutorial') { e.preventDefault(); endTutorial(!tut?.done); return; }
   if (phase === 'playing') { pendingTap = true; e.preventDefault(); }
   else if (phase === 'paused') { phase = 'playing'; last = performance.now(); acc = 0; show(null); e.preventDefault(); }
 }
 $('c').addEventListener('pointerdown', e => { if (e.isPrimary) onPress(e); });
 $('pause').addEventListener('pointerdown', onPress);
+$('tut').addEventListener('pointerdown', onPress);
 addEventListener('keydown', e => { if (e.code === 'Space') onPress(e); });
 
 $('b-practice').onclick = beginPractice;
@@ -161,6 +219,7 @@ $('b-daily').onclick = () => { void beginDaily(); };
 $('b-again').onclick = () => (daily ? null : beginPractice());
 $('b-menu').onclick = () => { phase = 'menu'; daily = null; show('menu'); };
 $('b-st-close').onclick = () => { phase = 'menu'; show('menu'); };
+$('l-how').onclick = (e) => { e.preventDefault(); maybeTutorial(() => { phase = 'menu'; show('menu'); }, true); };
 
 // ---- privacidad y borrado (DEC-053, DEC-064) ----------------------------
 const PRIVACY_URL = new URL('privacy.html', location.href).href;
@@ -204,6 +263,11 @@ function frame(now: number) {
   requestAnimationFrame(frame);
   let d = (now - last) / 1000;
   last = now;
+  if (phase === 'tutorial' && tut) {
+    acc += Math.min(d, 0.25);
+    while (acc >= DT) { tut.tick(); acc -= DT; drainEvents(); }
+    tutorialFrame();
+  }
   if (phase === 'playing') {
     if (d > PAUSE_GAP_S) { pause(); d = 0; }
     acc += Math.min(d, 0.25);

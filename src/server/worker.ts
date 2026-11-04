@@ -53,7 +53,7 @@ const DAY_MS = 86400000;
 /** Tablas con datos de una persona. Si se agrega una con user_id y no está acá, falla una prueba. */
 export const USER_TABLES = ['runs', 'daily_best', 'activity', 'events'] as const;
 /** Lo que el juego puede avisar y el máximo por pedido (manda cada 60 s como mucho). */
-export const REPORTED: Record<string, number> = { app_seconds: 900, practice_start: 30, pause: 60 };
+export const REPORTED: Record<string, number> = { app_seconds: 900, practice_start: 30, pause: 60, tutorial_done: 1, tutorial_skip: 1 };
 
 class HttpError extends Error {
   constructor(readonly status: number, readonly reason: string) { super(reason); }
@@ -133,7 +133,8 @@ async function session(env: Env, u: TgUser, startParam: string | null, now: numb
   await upsertUser(env, u, now);
   await markActive(env, u.id, now, cleanSource(startParam));
   await bump(env, u.id, 'opened', now);
-  return { ok: true, user: { name: displayName(u) }, daily: await dailyState(env, u.id, now), rulesVersion: RULES_VERSION };
+  const tut = Number(await env.DB.prepare(`SELECT tutorial_done FROM users WHERE id = ?1`).bind(u.id).first('tutorial_done') ?? 0);
+  return { ok: true, user: { name: displayName(u) }, tutorialDone: tut === 1, daily: await dailyState(env, u.id, now), rulesVersion: RULES_VERSION };
 }
 
 async function startDaily(env: Env, u: TgUser, now: number) {
@@ -233,8 +234,13 @@ async function practice(env: Env, u: TgUser, body: Record<string, unknown>, now:
 }
 
 async function report(env: Env, u: TgUser, body: Record<string, unknown>, now: number) {
-  if (!eventsOn(env)) return { ok: true, saved: false };
   const ev = body.events && typeof body.events === 'object' ? body.events as Record<string, unknown> : {};
+  // El tutorial visto se guarda siempre (no es tracking: es para no volver a mostrarlo).
+  if (Number(ev.tutorial_done) > 0 || Number(ev.tutorial_skip) > 0) {
+    await upsertUser(env, u, now);
+    await env.DB.prepare(`UPDATE users SET tutorial_done = 1 WHERE id = ?1`).bind(u.id).run();
+  }
+  if (!eventsOn(env)) return { ok: true, saved: false };
   const stmts: D1Stmt[] = [];
   for (const [k, max] of Object.entries(REPORTED)) {
     const n = Math.min(max, Math.floor(Number(ev[k]) || 0));

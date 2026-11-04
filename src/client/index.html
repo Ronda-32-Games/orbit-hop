@@ -30,6 +30,14 @@ button:focus-visible{outline:2px solid var(--cielo);outline-offset:3px}
 .links{display:flex;gap:18px;justify-content:center;font-size:11px;opacity:.6;margin-top:8px}
 .links a{color:var(--papel)}
 #m-daily{color:var(--lima)}
+#tut{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 18px) 16px calc(env(safe-area-inset-bottom,0px) + 40px);text-align:center}
+#tut .tag{font-size:10px;letter-spacing:.12em;opacity:.6}
+#tut-cap{margin:0 0 auto;padding-top:12px;max-width:30ch;font-size:16px;font-weight:700;line-height:1.4;min-height:3em;color:var(--papel);text-shadow:0 0 12px rgba(8,8,20,.9)}
+#tut-finger{width:64px;height:64px;border-radius:50%;border:2px dashed rgba(242,237,227,.55);display:grid;place-items:center;transition:transform .15s,border-color .15s;opacity:.85}
+#tut-finger i{width:26px;height:26px;border-radius:50%;background:rgba(242,237,227,.35);transition:transform .15s,background .15s}
+#tut-finger.press{transform:scale(.88);border-color:var(--lima)}
+#tut-finger.press i{transform:scale(.8);background:var(--lima)}
+#tut-finger.flash{box-shadow:0 0 0 14px rgba(197,240,74,.18),0 0 24px rgba(197,240,74,.6)}
 </style>
 </head>
 <body>
@@ -44,7 +52,13 @@ button:focus-visible{outline:2px solid var(--cielo);outline-offset:3px}
   <div class="row"><button id="b-daily" type="button" hidden>Daily</button><button id="b-practice" type="button">Practice</button></div>
   <p id="m-daily"></p>
   <p id="m-note"></p>
-  <p class="links"><a id="l-privacy" href="privacy.html">Privacy</a><a id="l-delete" href="#" hidden>Delete my data</a></p>
+  <p class="links"><a id="l-how" href="#">How to play</a><a id="l-privacy" href="privacy.html">Privacy</a><a id="l-delete" href="#" hidden>Delete my data</a></p>
+</div>
+
+<div id="tut" hidden>
+  <div class="tag">HOW TO PLAY · tap anywhere to skip</div>
+  <p id="tut-cap"></p>
+  <div id="tut-finger"><i></i></div>
 </div>
 
 <div id="pause" class="ov" hidden><h1>Paused</h1><p>Tap to keep playing.</p></div>

@@ -235,3 +235,14 @@ test('CORS: solo la dirección del juego', async () => {
   const other = await handle(new Request('https://api.example.dev/api/health', { headers: { Origin: 'https://evil.example' } }), env);
   assert.equal(other.headers.get('Access-Control-Allow-Origin'), null);
 });
+
+test('tutorial: queda marcado por jugador y la sesión lo devuelve', async () => {
+  const env = makeEnv(), { call } = mk(env);
+  assert.equal((await call('/api/session', {}, T0)).data.tutorialDone, false);
+  await call('/api/event', { events: { tutorial_skip: 1 } }, T0);
+  assert.equal((await call('/api/session', {}, T0 + 1000)).data.tutorialDone, true);
+  assert.equal((await call('/api/session', {}, T0 + 1000, 11)).data.tutorialDone, false);
+  const off = makeEnv({ EVENTS_ENABLED: 'false' }), m = mk(off);
+  await m.call('/api/event', { events: { tutorial_done: 1 } }, T0);
+  assert.equal((await m.call('/api/session', {}, T0)).data.tutorialDone, true);
+});

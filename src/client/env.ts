@@ -51,6 +51,8 @@ export interface TestMode {
   selftest: boolean;
   /** con seed o round no se guarda récord (DEC-038) */
   noRecord: boolean;
+  /** muestra el tutorial fantasma aunque ya se haya visto (?tutorial o startapp=tutorial) */
+  tutorial: boolean;
 }
 
 /**
@@ -71,7 +73,8 @@ export function readTestMode(): TestMode {
   const roundS = roundRaw !== null ? Math.max(3, Math.min(600, roundRaw)) : null;
   const selftest = q.has('selftest') || parts.includes('selftest');
   const test = q.has('test') || parts[0] === 'test' || seed !== null || roundS !== null || selftest;
-  return { test, seed: seed !== null ? seed >>> 0 : null, roundS, selftest, noRecord: seed !== null || roundS !== null };
+  const tutorial = q.has('tutorial') || parts.includes('tutorial');
+  return { test, seed: seed !== null ? seed >>> 0 : null, roundS, selftest, noRecord: seed !== null || roundS !== null, tutorial };
 }
 
 export function storage() {

@@ -26,7 +26,7 @@ async function post<T>(path: string, body: Record<string, unknown> = {}, keepali
 }
 
 export interface DailyState { day: string; attemptsAllowed: number; attemptsUsed: number; attemptsLeft: number; best: { planet: number; score: number; label: string | null } | null; rank: number | null; players: number; resetsInMs: number }
-export interface SessionOut { ok: boolean; daily?: DailyState; reason?: string }
+export interface SessionOut { ok: boolean; daily?: DailyState; tutorialDone?: boolean; reason?: string }
 
 export function session(): Promise<SessionOut> {
   return post('/api/session');

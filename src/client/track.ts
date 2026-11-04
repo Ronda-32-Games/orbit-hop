@@ -14,6 +14,10 @@ export interface Tracker {
   readonly on: boolean;
   /** estado del Daily que trajo la sesión (null si no hay) */
   daily(): Promise<DailyState | null>;
+  /** el servidor dice que esta persona ya vio el tutorial (null si no se sabe) */
+  tutorialDone(): Promise<boolean | null>;
+  /** tutorial visto entero o cortado: se manda enseguida */
+  tutorial(how: 'tutorial_done' | 'tutorial_skip'): void;
   add(event: 'practice_start' | 'pause', n?: number): void;
   practice(seed: number, taps: number[], r: Result, wallMs: number): void;
 }
@@ -49,6 +53,8 @@ export function makeTracker(mode: TestMode): Tracker {
   return {
     on,
     async daily() { return (await sess)?.daily ?? null; },
+    async tutorialDone() { const r = await sess; return r?.ok ? !!r.tutorialDone : null; },
+    tutorial(how) { if (on) sendEvents({ [how]: 1 }, true).catch(() => {}); },
     add(event, n = 1) { if (on) pending[event] = (pending[event] ?? 0) + n; },
     practice(seed, taps, r, wallMs) {
       if (!on) return;
