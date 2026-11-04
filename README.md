@@ -41,13 +41,28 @@ npm run golden      # regenerar partidas de referencia (solo si cambian las regl
 
 El `selftest` es la prueba que importa en iPhone: si da FAIL, las reglas no son deterministas en ese motor y el Daily no se puede validar ahí.
 
-## Servidor (Daily)
+## Servidor (Daily y tracking)
 
-`POST /api/start` da la semilla del día (secreta hasta ese día, igual para todos) y un token firmado. `POST /api/finish` recibe los toques, verifica initData de Telegram, el token, que no haya pasado menos tiempo real que el de la partida, y rehace la partida.
+Cloudflare Worker + D1 (`src/server`, `migrations/`). Todo pedido del juego lleva el initData de Telegram.
 
-Falta con D1: token de un solo uso, 3 intentos del Daily (DEC-052) y ranking.
+| Ruta | Qué hace |
+| --- | --- |
+| `GET /api/health` | ¿está vivo? |
+| `POST /api/session` | al abrir: guarda al jugador, cuenta el día activo (con el `start_param` del link) y devuelve los intentos del Daily |
+| `POST /api/start` | gasta un intento del Daily (3 por día, DEC-052) y da semilla + token |
+| `POST /api/finish` | rehace la partida, la cierra (token de un solo uso) y guarda el mejor del día |
+| `POST /api/practice` | cada Practice terminada: el servidor la rehace y la guarda (marca `clean`) |
+| `POST /api/event` | lo que avisa el juego cada 60 s: segundos visibles, Practice empezadas, pausas |
+| `POST /api/me/delete` | borra todo lo de quien pide (botón "Delete my data" del menú) |
+| `GET /api/stats/<informe>.csv\|.json` | informes sin nombres, con `Authorization: Bearer STATS_TOKEN` |
 
-Para desplegar (Ignacio): `npx wrangler deploy` y los tres secretos que lista `wrangler.toml`. Después, en el repo, la variable `API_URL` con la dirección del Worker; sin ella el juego solo tiene Practice.
+Informes: `overview`, `retention` (día 1 y 7), `funnel`, `planets` (hasta dónde llegan), `design` (perfectos, saltos, fallos por pared y asteroide, power-ups, racha, llegada al 32), `sources` (de qué link entran), `runs`, `players`. Tablero: `stats.html` en Pages (pide el STATS_TOKEN una vez). Privacidad: `privacy.html`.
+
+El tracking corre solo dentro de Telegram y fuera del modo de prueba. Plazos (DEC-064): partidas 30 días, el resto 12 meses, todo tras 12 meses sin entrar; lo borra el cron diario del Worker.
+
+### Publicación
+
+Un push a `main` prueba todo y publica el juego en Pages. Si el repo tiene el secreto `CLOUDFLARE_API_TOKEN`, también publica el Worker: busca o crea la base D1 `orbit-hop`, aplica las migraciones, despliega y carga los secretos. `TOKEN_SECRET` y `DAILY_SECRET` los genera solo la primera vez; `BOT_TOKEN` (el de @ronda32games_bot) y `STATS_TOKEN` salen de los secretos del repo.
 
 ## Assets
 

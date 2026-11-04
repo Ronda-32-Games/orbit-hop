@@ -4,8 +4,9 @@
  * del servidor: tick N → tap() → step(). Solo se anotan los toques con efecto.
  */
 import { label, makeRules, newGame, RULES, resultOf, step, tap, type GameState, type Result } from '../rules/index.ts';
-import { dailyAvailable, finishDaily, startDaily } from './api.ts';
-import { haptic, initTelegram, readTestMode, storage } from './env.ts';
+import { API_URL, haptic, initTelegram, readTestMode, storage, tg } from './env.ts';
+import { dailyAvailable, deleteMyData, type DailyState, finishDaily, startDaily } from './api.ts';
+import { makeTracker } from './track.ts';
 import { PU_STYLE, Renderer } from './render.ts';
 import { runSelftest } from './selftest.ts';
 
@@ -16,6 +17,7 @@ const mode = readTestMode();
 const store = storage();
 const rules = mode.roundS !== null ? makeRules({ roundS: mode.roundS }) : RULES;
 const renderer = new Renderer($<HTMLCanvasElement>('c'));
+const track = makeTracker(mode);
 
 type Phase = 'menu' | 'loading' | 'playing' | 'paused' | 'result';
 let phase: Phase = 'menu';
@@ -23,6 +25,7 @@ let s: GameState = newGame(mode.seed ?? 7, rules, true);
 let taps: number[] = [];
 let pendingTap = false;
 let daily: { token: string; day: string } | null = null;
+let startedAt = 0;
 renderer.reset(s);
 
 const DT = 1 / rules.tickHz;
@@ -46,6 +49,7 @@ function begin(seed: number) {
   taps = []; pendingTap = false; acc = 0; last = performance.now();
   fpsMin = 999; fps = 0;
   renderer.reset(s);
+  startedAt = Date.now();
   phase = 'playing';
   show(null);
 }
@@ -55,8 +59,16 @@ async function beginDaily() {
   $('m-note').textContent = 'Loading today’s Daily…';
   try {
     const r = await startDaily();
+    if (!r.ok && r.reason === 'no_attempts') {
+      phase = 'menu';
+      $('m-note').textContent = 'No Daily attempts left today.';
+      setDaily({ attemptsLeft: 0 } as DailyState);
+      return;
+    }
     if (!r.ok) throw new Error(r.reason);
+    $('b-daily').textContent = `Daily · ${r.attemptsLeft} left`;
     daily = { token: r.token, day: r.day };
+    $('m-note').textContent = '';
     begin(r.seed);
   } catch (e) {
     phase = 'menu';
@@ -66,7 +78,29 @@ async function beginDaily() {
 
 function beginPractice() {
   daily = null;
+  track.add('practice_start');
   begin(mode.seed ?? newSeed());
+}
+
+/** Botón del Daily con los intentos que quedan (DEC-052: 3 por día). */
+function setDaily(st: DailyState | null) {
+  const b = $<HTMLButtonElement>('b-daily');
+  if (!st) { b.hidden = true; return; }
+  b.hidden = false;
+  b.disabled = st.attemptsLeft <= 0;
+  b.textContent = st.attemptsLeft > 0 ? `Daily · ${st.attemptsLeft} left` : 'Daily · back tomorrow';
+  const best = st.best ? `Today: planet ${st.best.label ?? st.best.planet}${st.rank ? ` · #${st.rank} of ${st.players}` : ''}` : '';
+  $('m-daily').textContent = best;
+}
+
+async function refreshDaily() {
+  if (!dailyAvailable(mode)) return setDaily(null);
+  if (track.on) return setDaily(await track.daily());
+  // modo de prueba: sin sesión, solo se mira que el servidor responda
+  try {
+    const ok = (await fetch(API_URL + '/api/health')).ok;
+    $('b-daily').hidden = !ok;
+  } catch { $('b-daily').hidden = true; }
 }
 
 async function finish() {
@@ -88,13 +122,20 @@ async function finish() {
     again.hidden = true;
     try {
       const out = await finishDaily(daily.token, taps, r);
-      $('r-best').textContent = out.ok ? 'Score confirmed ✓' : `Score not accepted (${out.reason})`;
+      if (out.ok && out.daily) {
+        const d = out.daily;
+        $('r-best').textContent = `Score confirmed ✓${d.rank ? ` · #${d.rank} of ${d.players} today` : ''}${out.improved ? '' : d.best ? ` · best planet ${d.best.label ?? d.best.planet}` : ''}`;
+        setDaily(d);
+      } else {
+        $('r-best').textContent = out.ok ? 'Score confirmed ✓' : `Score not accepted (${out.reason})`;
+      }
     } catch {
       $('r-best').textContent = 'Could not send the score.';
     }
   } else {
     again.hidden = false;
     if (!mode.noRecord) savePracticeBest(r);
+    track.practice(s.seed, taps.slice(), r, Date.now() - startedAt);
   }
 }
 
@@ -121,10 +162,39 @@ $('b-again').onclick = () => (daily ? null : beginPractice());
 $('b-menu').onclick = () => { phase = 'menu'; daily = null; show('menu'); };
 $('b-st-close').onclick = () => { phase = 'menu'; show('menu'); };
 
+// ---- privacidad y borrado (DEC-053, DEC-064) ----------------------------
+const PRIVACY_URL = new URL('privacy.html', location.href).href;
+$('l-privacy').onclick = (e) => {
+  e.preventDefault();
+  const w = tg();
+  if (w?.openLink) w.openLink(PRIVACY_URL); else open(PRIVACY_URL, '_blank');
+};
+function confirmBox(msg: string): Promise<boolean> {
+  const w = tg();
+  if (w?.showConfirm) return new Promise(res => { try { w.showConfirm!(msg, ok => res(ok)); } catch { res(confirm(msg)); } });
+  return Promise.resolve(confirm(msg));
+}
+function alertBox(msg: string) {
+  const w = tg();
+  try { if (w?.showAlert) { w.showAlert(msg); return; } } catch { /* nada */ }
+  alert(msg);
+}
+$('l-delete').hidden = !track.on;
+$('l-delete').onclick = async (e) => {
+  e.preventDefault();
+  if (!(await confirmBox('Delete everything Orbit Hop keeps about you? Your scores and today’s leaderboard place will be gone.'))) return;
+  try {
+    const out = await deleteMyData();
+    alertBox(out.deleted ? 'Done. Your data was deleted.' : 'Could not delete right now. Try again later.');
+    if (out.deleted) { store.set('oh.best', null); setDaily(null); }
+  } catch { alertBox('Could not reach the server. Try again later.'); }
+};
+
 function pause() {
   if (phase !== 'playing') return;
   phase = 'paused';
   pendingTap = false;
+  track.add('pause');
   show('pause');
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
@@ -203,7 +273,8 @@ if (mode.test) {
 
 // ---- arranque -----------------------------------------------------------
 $('ms').hidden = !mode.test;
-$('b-daily').hidden = !dailyAvailable();
+$('b-daily').hidden = true;
+void refreshDaily();
 if (mode.selftest) {
   const r = runSelftest();
   $('st-out').textContent = r.text;

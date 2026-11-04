@@ -11,6 +11,9 @@ interface TgWebApp {
   disableVerticalSwipes?: () => void;
   setHeaderColor?: (c: string) => void;
   setBackgroundColor?: (c: string) => void;
+  showConfirm?: (msg: string, cb: (ok: boolean) => void) => void;
+  showAlert?: (msg: string, cb?: () => void) => void;
+  openLink?: (url: string) => void;
   HapticFeedback?: {
     impactOccurred(s: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft'): void;
     notificationOccurred(s: 'error' | 'success' | 'warning'): void;

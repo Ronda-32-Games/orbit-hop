@@ -1,5 +1,6 @@
-node_modules/
-dist/
-dist-worker/
-.wrangler/
 .dev.vars
+.wrangler/
+dist-worker/
+dist/
+node_modules/
+secrets.json

@@ -1,4 +1,7 @@
-# Pruebas + publicación en GitHub Pages. Si falla una prueba, no se publica (DEC-038).
+# Pruebas + publicación. Si falla una prueba, no se publica nada (DEC-038).
+#  - pages:  el juego, privacy.html y stats.html en GitHub Pages.
+#  - worker: el servidor en Cloudflare (base D1, migraciones, secretos). Solo corre si el repo
+#            tiene el secreto CLOUDFLARE_API_TOKEN; si no, avisa y sigue (el juego sale igual).
 name: Test and deploy
 on:
   push:
@@ -12,8 +15,13 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  # Dirección del servidor. La variable API_URL del repo la reemplaza si hace falta.
+  API_URL: ${{ vars.API_URL || 'https://orbit-hop-api.ronda32games.workers.dev' }}
+  D1_NAME: orbit-hop
 
 jobs:
   test-build:
@@ -27,11 +35,80 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-        env:
-          API_URL: ${{ vars.API_URL }}
+      - name: Worker bundle check (no account needed)
+        run: npx --yes wrangler@4 deploy --dry-run --outdir dist-worker
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+  worker:
+    if: github.ref == 'refs/heads/main'
+    needs: test-build
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      STATS_TOKEN: ${{ secrets.STATS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check Cloudflare token
+        id: cf
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::warning::Falta el secreto CLOUDFLARE_API_TOKEN en el repo: el servidor no se publica (el juego sí, solo con Practice)."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm install
+        if: steps.cf.outputs.ok == 'true'
+      - name: Find or create the D1 database
+        if: steps.cf.outputs.ok == 'true'
+        run: |
+          find_id() { npx --yes wrangler@4 d1 list --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s.slice(s.indexOf("[")));const d=j.find(x=>x.name===process.env.D1_NAME);process.stdout.write(d?d.uuid:"")})'; }
+          ID=$(find_id)
+          if [ -z "$ID" ]; then
+            echo "Creando la base $D1_NAME"
+            npx --yes wrangler@4 d1 create "$D1_NAME"
+            ID=$(find_id)
+          fi
+          [ -n "$ID" ] || { echo "::error::No se pudo crear ni encontrar la base D1 $D1_NAME"; exit 1; }
+          echo "D1 $D1_NAME = $ID"
+          sed -i "s/__D1_ID__/$ID/" wrangler.toml
+      - name: Apply migrations
+        if: steps.cf.outputs.ok == 'true'
+        run: npx --yes wrangler@4 d1 migrations apply "$D1_NAME" --remote
+      - name: Deploy Worker
+        if: steps.cf.outputs.ok == 'true'
+        run: npx --yes wrangler@4 deploy
+      - name: Worker secrets
+        if: steps.cf.outputs.ok == 'true'
+        run: |
+          HAVE=$(npx --yes wrangler@4 secret list --format json 2>/dev/null || echo '[]')
+          node -e '
+            const have = (() => { try { const s = process.argv[1]; return JSON.parse(s.slice(s.indexOf("["))).map(x => x.name); } catch { return []; } })();
+            const crypto = require("node:crypto");
+            const out = {};
+            for (const k of ["TOKEN_SECRET", "DAILY_SECRET"]) if (!have.includes(k)) out[k] = crypto.randomBytes(32).toString("hex");
+            for (const k of ["BOT_TOKEN", "STATS_TOKEN"]) if (process.env[k]) out[k] = process.env[k];
+            const miss = ["BOT_TOKEN", "STATS_TOKEN"].filter(k => !process.env[k] && !have.includes(k));
+            for (const k of miss) console.log(`::warning::Falta el secreto ${k} (en GitHub o en Cloudflare). ${k === "BOT_TOKEN" ? "Sin él no anda el Daily ni el tracking." : "Sin él no anda stats.html."}`);
+            require("node:fs").writeFileSync("secrets.json", JSON.stringify(out));
+            console.log("Secretos a cargar:", Object.keys(out).join(", ") || "(ninguno)");
+          ' "$HAVE"
+          if [ "$(cat secrets.json)" != "{}" ]; then npx --yes wrangler@4 secret bulk secrets.json; fi
+          rm -f secrets.json
+      - name: Health check
+        if: steps.cf.outputs.ok == 'true'
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "$API_URL/api/health"; then exit 0; fi
+            sleep 10
+          done
+          echo "::warning::El servidor no respondió en $API_URL/api/health (puede tardar un par de minutos la primera vez)."
 
   deploy:
     if: github.ref == 'refs/heads/main'

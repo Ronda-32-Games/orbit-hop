@@ -1,18 +1,27 @@
-# Servidor de Orbit Hop en Cloudflare Workers (DEC-052).
-# Lo despliega Ignacio con: npx wrangler deploy
-# Secretos (nunca en el repo):
-#   npx wrangler secret put BOT_TOKEN      # token de @ronda32games_bot
-#   npx wrangler secret put TOKEN_SECRET   # cualquier texto largo al azar
-#   npx wrangler secret put DAILY_SECRET   # otro texto largo al azar
+# Servidor de Orbit Hop en Cloudflare Workers + D1 (DEC-052).
+# Lo publica GitHub Actions (.github/workflows/pages.yml, trabajo "worker") con el secreto
+# CLOUDFLARE_API_TOKEN del repo. Acá no va ningún secreto:
+#   BOT_TOKEN y STATS_TOKEN salen de los secretos del repo de GitHub (los carga Ignacio);
+#   TOKEN_SECRET y DAILY_SECRET los genera el workflow la primera vez y quedan en Cloudflare.
 name = "orbit-hop-api"
 main = "src/server/worker.ts"
 compatibility_date = "2026-10-01"
+workers_dev = true
+# Cuenta de Cloudflare del estudio (no es secreto; la misma de Sum 32, TASK-058).
+account_id = "2ce5a265e8d93269cf3aa0780303b7b7"
 
 [vars]
 ALLOWED_ORIGIN = "https://ronda-32-games.github.io"
+# "true" guarda actividad y eventos. Encendido con privacy.html publicada en Pages.
+EVENTS_ENABLED = "true"
 
-# Cuando sumemos D1 (intentos del Daily, token de un solo uso, ranking):
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "ronda32"
-# database_id = "..."
+[[d1_databases]]
+binding = "DB"
+database_name = "orbit-hop"
+# El workflow busca la base por nombre (o la crea) y pone acá su id antes de publicar.
+database_id = "__D1_ID__"
+migrations_dir = "migrations"
+
+# Purga diaria con los plazos de DEC-064 (06:17 UTC).
+[triggers]
+crons = ["17 6 * * *"]

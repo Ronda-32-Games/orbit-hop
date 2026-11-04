@@ -4,7 +4,7 @@
 //   node tools/build.mjs --worker   → dist-worker/worker.js
 // API_URL=https://orbit-hop-api.<cuenta>.workers.dev node tools/build.mjs  → con Daily
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync, statSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 
 const args = new Set(process.argv.slice(2));
 const api = process.env.API_URL ?? '';
@@ -18,6 +18,9 @@ if (args.has('--worker')) {
 } else {
   mkdirSync('dist', { recursive: true });
   copyFileSync('src/client/index.html', 'dist/index.html');
+  // privacidad y tablero de números (el tablero lleva la dirección del servidor, nunca un secreto)
+  copyFileSync('src/client/pages/privacy.html', 'dist/privacy.html');
+  writeFileSync('dist/stats.html', readFileSync('src/client/pages/stats.html', 'utf8').replace('__API_URL__', api));
   const opts = {
     entryPoints: ['src/client/main.ts'], bundle: true, format: 'esm', target: 'es2020',
     outfile: 'dist/game.js', minify: true, sourcemap: false,

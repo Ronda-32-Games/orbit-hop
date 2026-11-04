@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Orbit Hop · Números</title>
+<style>
+:root { --bg:#151A2D; --card:#1D2440; --line:#2C355A; --ink:#F2EDE3; --ink2:#F2EDE3B3; --ink3:#F2EDE380; --mark:#C5F04A; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }
+main { max-width:960px; margin:0 auto; padding:20px 16px 48px; }
+h1 { font-size:22px; margin:0; } h2 { font-size:15px; margin:28px 0 10px; color:var(--ink2); font-weight:600; }
+.top { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; }
+.ctl { display:flex; gap:6px; flex-wrap:wrap; }
+button, input { font:inherit; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 10px; }
+button.on { border-color:var(--mark); color:var(--mark); }
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:16px; }
+.tile { background:var(--card); border-radius:12px; padding:14px; }
+.tile .k { color:var(--ink2); font-size:13px; } .tile .v { font-size:28px; font-weight:700; font-variant-numeric:tabular-nums; }
+.tile .s { color:var(--ink3); font-size:12px; }
+.chart { background:var(--card); border-radius:12px; padding:12px; position:relative; }
+svg { display:block; width:100%; height:180px; }
+.tip { position:absolute; pointer-events:none; background:#0d0b14; border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-size:13px; display:none; white-space:nowrap; }
+.wrap { overflow-x:auto; background:var(--card); border-radius:12px; }
+table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; font-size:14px; }
+th, td { padding:7px 10px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap; }
+th:first-child, td:first-child { text-align:left; } th { color:var(--ink2); font-weight:600; }
+.bar { display:inline-block; height:8px; background:var(--mark); border-radius:4px; vertical-align:middle; }
+.msg { color:var(--ink2); margin-top:16px; } .err { color:#ff9b9b; }
+.dl a { color:var(--mark); margin-right:12px; font-size:13px; }
+#login[hidden] { display:none; }
+#login { margin-top:24px; display:flex; gap:8px; flex-wrap:wrap; } #login input { flex:1; min-width:220px; }
+</style>
+</head>
+<body>
+<main>
+<div class="top">
+  <h1>Orbit Hop · Números</h1>
+  <div class="ctl" id="ranges">
+    <button data-d="7">7 días</button><button data-d="30" class="on">30 días</button><button data-d="90">90 días</button>
+  </div>
+</div>
+<form id="login" hidden>
+  <input id="tok" type="password" placeholder="STATS_TOKEN" autocomplete="off">
+  <button type="submit">Entrar</button>
+</form>
+<div id="msg" class="msg">Cargando…</div>
+<div id="out" hidden>
+  <div class="tiles" id="tiles"></div>
+  <h2>Jugadores por día</h2>
+  <div class="chart" id="chart"><svg id="svg" role="img" aria-label="Jugadores por día"></svg><div class="tip" id="tip"></div></div>
+  <h2>Por día</h2>
+  <div class="wrap"><table id="days"></table></div>
+  <h2>Hasta qué planeta llegan (partidas limpias del período)</h2>
+  <div class="wrap"><table id="planets"></table></div>
+  <h2>Cómo juegan (promedios por partida, todo el período)</h2>
+  <div class="wrap"><table id="design"></table></div>
+  <h2>Retención: de los que entraron por primera vez ese día, cuántos volvieron</h2>
+  <div class="wrap"><table id="ret"></table></div>
+  <h2>Planillas (CSV, para Power BI o Sheets)</h2>
+  <p class="dl" id="dl"></p>
+  <p class="msg">Días en hora UTC (21:00 de Argentina). Solo cuenta a quienes juegan dentro de Telegram, fuera del modo de prueba. Día 1 y día 7 se completan cuando ese día termina. Las partidas se guardan 30 días (DEC-064).</p>
+</div>
+</main>
+<script>
+// Tablero de Orbit Hop. Lee /api/stats del servidor con el STATS_TOKEN, que queda guardado solo
+// en este navegador. La página no lleva ningún secreto.
+const API = '__API_URL__';
+const $ = (id) => document.getElementById(id);
+let days = 30;
+function getTok() { try { return localStorage.getItem('oh_stats_token') || ''; } catch (e) { return ''; } }
+function setTok(t) { try { localStorage.setItem('oh_stats_token', t); } catch (e) {} }
+const iso = (d) => d.toISOString().slice(0, 10);
+const fmt = (n) => (n === '' || n == null) ? '—' : Number(n).toLocaleString('es-AR');
+
+async function get(name, from, to) {
+  const r = await fetch(`${API}/api/stats/${name}.json?from=${from}&to=${to}`, { headers: { Authorization: 'Bearer ' + getTok() } });
+  if (r.status === 401) throw Object.assign(new Error('token'), { auth: true });
+  if (!r.ok) throw new Error('El servidor respondió ' + r.status);
+  return (await r.json()).rows;
+}
+
+async function download(name, from, to) {
+  const r = await fetch(`${API}/api/stats/${name}.csv?from=${from}&to=${to}`, { headers: { Authorization: 'Bearer ' + getTok() } });
+  if (!r.ok) { alert('No se pudo bajar: ' + r.status); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = `orbit-hop-${name}-${to}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+async function load() {
+  if (!API || API.indexOf('__') === 0) { $('msg').innerHTML = '<span class="err">Esta copia no tiene la dirección del servidor.</span>'; return; }
+  if (!getTok()) { $('login').hidden = false; $('msg').textContent = 'Pegá el STATS_TOKEN (queda guardado en este navegador).'; return; }
+  const to = new Date(), from = new Date(Date.now() - (days - 1) * 86400000);
+  const f = iso(from), t = iso(to);
+  $('msg').textContent = 'Cargando…';
+  try {
+    const [ov, ret, pl, planets, design] = await Promise.all(['overview', 'retention', 'players', 'planets', 'design'].map((n) => get(n, f, t)));
+    $('login').hidden = true; $('msg').textContent = ''; $('out').hidden = false;
+    render(fill(ov, from, to), ret, pl, planets, design);
+    $('dl').innerHTML = ['overview', 'retention', 'funnel', 'planets', 'design', 'sources', 'runs', 'players'].map((n) => `<a href="#" data-n="${n}">${n}.csv</a>`).join('');
+    $('dl').onclick = (e) => { const a = e.target.closest('a[data-n]'); if (!a) return; e.preventDefault(); download(a.dataset.n, f, t); };
+  } catch (e) {
+    if (e.auth) { setTok(''); $('login').hidden = false; $('msg').innerHTML = '<span class="err">Token incorrecto.</span>'; }
+    else $('msg').innerHTML = '<span class="err">No se pudo leer: ' + e.message + '</span>';
+  }
+}
+
+function fill(rows, from, to) {
+  const by = new Map(rows.map((r) => [r.day, r]));
+  const out = [];
+  for (let t = Date.parse(iso(from)); t <= Date.parse(iso(to)); t += 86400000) {
+    const d = iso(new Date(t));
+    out.push(by.get(d) || { day: d, players: 0, new_players: 0, practice_games: 0, daily_games: 0, games: 0, avg_planet: '', best_planet: 0, app_minutes: 0, minutes_per_player: '' });
+  }
+  return out;
+}
+
+function render(ov, ret, pl, planets, design) {
+  const sum = (k) => ov.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+  const playerDays = sum('players'), minutes = sum('app_minutes');
+  const uniq = pl.filter((p) => p.last_day >= ov[0].day).length;
+  const rate = (k) => { let a = 0, b = 0; for (const r of ret) if (r[k] !== '') { a += Number(r[k]); b += r.players; } return b ? Math.round(1000 * a / b) / 10 + '%' : '—'; };
+  let pw = 0, pn = 0; for (const r of ov) if (r.avg_planet !== '') { pw += r.avg_planet * r.games; pn += r.games; }
+  const today = ov[ov.length - 1];
+  $('tiles').innerHTML = [
+    ['Jugadores', fmt(uniq), `distintos en ${days} días · hoy ${fmt(today.players)}`],
+    ['Partidas', fmt(sum('games')), `${fmt(sum('practice_games'))} Practice · ${fmt(sum('daily_games'))} Daily`],
+    ['Planeta promedio', pn ? (Math.round(10 * pw / pn) / 10).toLocaleString('es-AR') : '—', `mejor: ${fmt(Math.max(0, ...ov.map((r) => r.best_planet || 0)))}`],
+    ['Minutos por jugador', playerDays ? (Math.round(10 * minutes / playerDays) / 10).toLocaleString('es-AR') : '—', `por día jugado · ${fmt(Math.round(minutes))} min en total`],
+    ['Vuelven al día 1', rate('d1_players'), 'promedio de los días con dato'],
+    ['Vuelven al día 7', rate('d7_players'), 'promedio de los días con dato'],
+  ].map(([k, v, s]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
+
+  const svg = $('svg'), W = svg.clientWidth || 600, H = 180, pad = { l: 28, r: 4, t: 8, b: 20 };
+  const max = Math.max(1, ...ov.map((r) => r.players));
+  const step = (W - pad.l - pad.r) / ov.length, bw = Math.max(2, step - 2);
+  const y = (v) => H - pad.b - (H - pad.t - pad.b) * v / max;
+  let g = `<line x1="${pad.l}" x2="${W - pad.r}" y1="${H - pad.b}" y2="${H - pad.b}" stroke="#2C355A"/>`;
+  g += `<text x="${pad.l - 6}" y="${pad.t + 8}" fill="#F2EDE380" font-size="11" text-anchor="end">${max}</text>`;
+  ov.forEach((r, i) => {
+    const x = pad.l + i * step + 1, top = y(r.players), h = H - pad.b - top, rr = Math.min(4, h, bw / 2);
+    if (h > 0) g += `<path d="M${x},${H - pad.b}V${top + rr}q0,-${rr} ${rr},-${rr}H${x + bw - rr}q${rr},0 ${rr},${rr}V${H - pad.b}Z" fill="#C5F04A"/>`;
+    g += `<rect x="${pad.l + i * step}" y="${pad.t}" width="${step}" height="${H - pad.t - pad.b}" fill="transparent" data-i="${i}"/>`;
+    if (i === 0 || i === ov.length - 1) g += `<text x="${x + bw / 2}" y="${H - 5}" fill="#F2EDE380" font-size="11" text-anchor="${i ? 'end' : 'start'}">${r.day.slice(5)}</text>`;
+  });
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = g;
+  svg.onmousemove = svg.ontouchstart = (e) => {
+    const t = e.target.closest('rect[data-i]'); const tip = $('tip');
+    if (!t) { tip.style.display = 'none'; return; }
+    const r = ov[+t.dataset.i];
+    tip.textContent = `${r.day} · ${r.players} jugadores · ${r.games} partidas`;
+    tip.style.display = 'block';
+    const bx = t.getBoundingClientRect(), cx = $('chart').getBoundingClientRect();
+    tip.style.left = Math.min(cx.width - tip.offsetWidth - 4, Math.max(4, bx.left - cx.left + bx.width / 2 - tip.offsetWidth / 2)) + 'px';
+    tip.style.top = '4px';
+  };
+  svg.onmouseleave = () => { $('tip').style.display = 'none'; };
+
+  $('days').innerHTML = '<tr><th>Día</th><th>Jugadores</th><th>Nuevos</th><th>Partidas</th><th>Practice</th><th>Daily</th><th>Planeta prom.</th><th>Mejor</th><th>Min. por jugador</th></tr>' +
+    ov.slice().reverse().map((r) => `<tr><td>${r.day}</td><td>${fmt(r.players)}</td><td>${fmt(r.new_players)}</td><td>${fmt(r.games)}</td><td>${fmt(r.practice_games)}</td><td>${fmt(r.daily_games)}</td><td>${fmt(r.avg_planet)}</td><td>${fmt(r.best_planet || '')}</td><td>${fmt(r.minutes_per_player)}</td></tr>`).join('');
+
+  const pmax = Math.max(1, ...planets.map((p) => p.pct || 0));
+  $('planets').innerHTML = '<tr><th>Modo</th><th>Planetas</th><th>Partidas</th><th>%</th><th></th><th>Terminó en camino B</th></tr>' +
+    (planets.length ? planets.map((p) => `<tr><td>${p.mode}</td><td>${p.planets}</td><td>${fmt(p.games)}</td><td>${p.pct}%</td><td style="text-align:left;min-width:120px"><span class="bar" style="width:${Math.round(100 * p.pct / pmax)}px"></span></td><td>${fmt(p.ended_on_b)}</td></tr>`).join('')
+      : '<tr><td colspan="6">Todavía no hay partidas.</td></tr>');
+
+  // Promedio ponderado del período por modo.
+  const agg = {};
+  for (const r of design) {
+    const a = agg[r.mode] ||= { mode: r.mode, games: 0 };
+    for (const k of Object.keys(r)) if (k !== 'day' && k !== 'mode' && k !== 'games' && r[k] !== '') a[k] = (a[k] || 0) + Number(r[k]) * r.games;
+    a.games += r.games;
+  }
+  const cols = [['avg_planet', 'Planeta'], ['avg_score', 'Puntaje'], ['avg_taps', 'Toques'], ['perfect_pct', '% perfectos'], ['skip_pct', '% salteando'], ['avg_miss_wall', 'Fallos pared'], ['avg_miss_asteroid', 'Fallos asteroide'], ['avg_powerups', 'Power-ups'], ['avg_best_streak', 'Mejor racha'], ['avg_bonus_s', 's extra'], ['got32_pct', '% llega al 32'], ['avg_round_s', 'Duración s']];
+  const rowsD = Object.values(agg);
+  $('design').innerHTML = '<tr><th>Modo</th><th>Partidas</th>' + cols.map((c) => `<th>${c[1]}</th>`).join('') + '</tr>' +
+    (rowsD.length ? rowsD.map((a) => `<tr><td>${a.mode}</td><td>${fmt(a.games)}</td>` + cols.map((c) => `<td>${a[c[0]] == null ? '—' : (Math.round(10 * a[c[0]] / a.games) / 10).toLocaleString('es-AR')}</td>`).join('') + '</tr>').join('')
+      : `<tr><td colspan="${cols.length + 2}">Todavía no hay partidas.</td></tr>`);
+
+  $('ret').innerHTML = '<tr><th>Primer día</th><th>Nuevos</th><th>Volvieron día 1</th><th>%</th><th>Volvieron día 7</th><th>%</th></tr>' +
+    (ret.length ? ret.slice().reverse().map((r) => `<tr><td>${r.cohort_day}</td><td>${fmt(r.players)}</td><td>${fmt(r.d1_players)}</td><td>${r.d1_pct === '' ? '—' : r.d1_pct + '%'}</td><td>${fmt(r.d7_players)}</td><td>${r.d7_pct === '' ? '—' : r.d7_pct + '%'}</td></tr>`).join('')
+      : '<tr><td colspan="6">Todavía no hay jugadores.</td></tr>');
+}
+
+$('login').addEventListener('submit', (e) => { e.preventDefault(); setTok($('tok').value.trim()); $('tok').value = ''; load(); });
+$('ranges').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  days = +b.dataset.d; for (const x of $('ranges').children) x.classList.toggle('on', x === b); load();
+});
+load();
+</script>
+</body>
+</html>

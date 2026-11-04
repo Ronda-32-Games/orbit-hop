@@ -27,6 +27,9 @@ button:disabled{opacity:.35}
 button:focus-visible{outline:2px solid var(--cielo);outline-offset:3px}
 #selftest pre{text-align:left;font-size:11px;line-height:1.6;max-width:100%;white-space:pre-wrap;user-select:text;-webkit-user-select:text}
 [hidden]{display:none!important}
+.links{display:flex;gap:18px;justify-content:center;font-size:11px;opacity:.6;margin-top:8px}
+.links a{color:var(--papel)}
+#m-daily{color:var(--lima)}
 </style>
 </head>
 <body>
@@ -39,7 +42,9 @@ button:focus-visible{outline:2px solid var(--cielo);outline-offset:3px}
   <h1>Orbit Hop</h1>
   <p>Tap to let go. Land inside the field of a planet ahead. Skip planets for more points. 60 seconds.</p>
   <div class="row"><button id="b-daily" type="button" hidden>Daily</button><button id="b-practice" type="button">Practice</button></div>
+  <p id="m-daily"></p>
   <p id="m-note"></p>
+  <p class="links"><a id="l-privacy" href="privacy.html">Privacy</a><a id="l-delete" href="#" hidden>Delete my data</a></p>
 </div>
 
 <div id="pause" class="ov" hidden><h1>Paused</h1><p>Tap to keep playing.</p></div>

@@ -59,6 +59,12 @@ export interface GameState {
   perfects: number;
   captures: number;
   misses: number;
+  /** solo para métricas (no entran en la huella): */
+  skips: number;
+  missWall: number;
+  missAst: number;
+  powerups: number;
+  bestStreak: number;
   ended: boolean;
   /** huella de la partida: si el teléfono y el servidor no coinciden, cambia */
   checksum: number;
@@ -74,6 +80,7 @@ export function newGame(seed: number, rules: Rules, withEvents = false): GameSta
     score: 0, combo: 1, streak: 0, bonusTicks: 0,
     grav: 0, shield: false, aim: 0, slowLeft: 0, astT: 0,
     got32: false, taps: 0, perfects: 0, captures: 0, misses: 0,
+    skips: 0, missWall: 0, missAst: 0, powerups: 0, bestStreak: 0,
     ended: false, checksum: 0x811c9dc5, events: withEvents ? [] : null,
   };
 }
@@ -150,6 +157,7 @@ function miss(s: GameState, cause: 'wall' | 'asteroid') {
   s.combo = 1;
   s.streak = 0;
   s.misses++;
+  if (cause === 'wall') s.missWall++; else s.missAst++;
   s.checksum = hashFloat(hashInt(s.checksum, 0xdead), f.x);
   emit(s, { type: 'miss', x: f.x, y: f.y, cause });
 }
@@ -208,6 +216,7 @@ function flyStep(s: GameState) {
         else if (t === 'shield') s.shield = true;
         else if (t === 'aim') s.aim = r.aimShots;
         else s.slowLeft = r.slowTicks;
+        s.powerups++;
         s.checksum = hashInt(s.checksum, 0x900 + PU_CODE[t]);
         emit(s, { type: 'powerup', x: q.x, y: q.y, pu: t });
       }
@@ -236,10 +245,12 @@ function capture(s: GameState, c: Cand, fe: number) {
   s.angle = datan2(f.y - q.y, f.x - q.x);
   s.fly = null;
   s.captures++;
+  if (c.depth > 1) s.skips++;
   if (perfect) {
     s.perfects++;
     s.combo = Math.min(r.comboMax, s.combo + r.comboStep);
     s.streak++;
+    if (s.streak > s.bestStreak) s.bestStreak = s.streak;
   } else {
     s.combo = 1;
     s.streak = 0;
@@ -274,6 +285,13 @@ export interface Result {
   perfects: number;
   captures: number;
   misses: number;
+  skips: number;
+  missWall: number;
+  missAst: number;
+  powerups: number;
+  bestStreak: number;
+  /** segundos ganados por racha de perfectos */
+  bonusS: number;
   got32: boolean;
   ticks: number;
   checksum: number;
@@ -290,6 +308,12 @@ export function resultOf(s: GameState): Result {
     perfects: s.perfects,
     captures: s.captures,
     misses: s.misses,
+    skips: s.skips,
+    missWall: s.missWall,
+    missAst: s.missAst,
+    powerups: s.powerups,
+    bestStreak: s.bestStreak,
+    bonusS: s.bonusTicks / s.rules.tickHz,
     got32: s.got32,
     ticks: s.tick,
     checksum: s.checksum >>> 0,

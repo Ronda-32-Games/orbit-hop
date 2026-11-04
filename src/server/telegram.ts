@@ -7,7 +7,7 @@
  */
 import { hmac, safeEqual, toHex } from './crypto.ts';
 
-export interface TgUser { id: number; first_name?: string; username?: string; language_code?: string }
+export interface TgUser { id: number; first_name?: string; last_name?: string; username?: string; language_code?: string }
 
 export type InitDataCheck =
   | { ok: true; user: TgUser; authDate: number }
